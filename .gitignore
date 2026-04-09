@@ -1,0 +1,46 @@
+# Entorno virtual
+.venv/
+venv/
+env/
+
+# Archivos compilados de Python
+*.pyc
+*.pyo
+*.pyd
+__pycache__/
+
+# Logs y reportes temporales
+*.log
+*.tmp
+*.bak
+
+# Archivos de entorno
+.env
+.env.*
+
+# IDEs y editores
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Sistema operativo
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Carpeta de Workspace y reportes generados
+Workspace/
+data/
+*.md        
+
+# Distribuciones y paquetes
+dist/
+build/
+*.egg-info/
+*.whl
+
+# Otros temporales
+*.swp
+*.tmp
+

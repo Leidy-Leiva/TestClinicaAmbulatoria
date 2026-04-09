@@ -1,0 +1,17 @@
+services:
+  clinica-analytics-mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    image: clinica-analytics-mcp:latest
+    container_name: clinica-analytics-mcp
+    stdin_open: true
+    tty: false
+    volumes:
+      - ../mcp-crud/data:/data
+    environment:
+      DB_PATH: /data/crud.db
+    ports:
+      - "8001:8000"
+    restart: unless-stopped

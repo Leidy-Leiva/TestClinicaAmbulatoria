@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "filesystem-mcp": {
+      "command": "docker",
+      "args": [
+        "run",
+        "--rm",
+        "-i",
+        "-v", "mcp_data:/workspace",
+        "-e", "FS_ROOT=/workspace",
+        "-e", "MAX_FILE_SIZE_MB=10",
+        "filesystem-mcp:latest"
+      ]
+    }
+  }
+}

@@ -1,0 +1,19 @@
+services:
+  crud-mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    image: crud-mcp:latest
+    container_name: crud-mcp
+    stdin_open: true
+    tty: false
+    volumes:
+      - ./data:/data
+    environment:
+      DB_PATH: /data/crud.db
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+    user: "0:0"
+    command: ["--port", "8000"]

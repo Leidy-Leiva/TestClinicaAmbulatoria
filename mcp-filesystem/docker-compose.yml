@@ -1,0 +1,22 @@
+services:
+  filesystem-mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    image: filesystem-mcp:latest
+    container_name: filesystem-mcp
+    stdin_open: true
+    tty: false
+    volumes:
+      - mcp_data:/workspace
+    environment:
+      FS_ROOT: /workspace
+      MAX_FILE_SIZE_MB: "10"
+    ports:
+      - "8003:8000"
+    restart: unless-stopped
+
+volumes:
+  mcp_data:
+    driver: local

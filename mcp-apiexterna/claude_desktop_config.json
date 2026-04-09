@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "weather-colombia-mcp": {
+      "command": "docker",
+      "args": [
+        "run",
+        "--rm",
+        "-i",
+        "-e", "OWM_API_KEY=",
+        "-e", "HTTP_TIMEOUT=10",
+        "weather-colombia-mcp:latest"
+      ]
+    }
+  }
+}

@@ -1,0 +1,16 @@
+services:
+  weather-colombia-mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    image: weather-colombia-mcp:latest
+    container_name: weather-colombia-mcp
+    stdin_open: true
+    tty: false
+    ports:
+      - "8002:8000"
+    environment:
+      OWM_API_KEY: ""
+      HTTP_TIMEOUT: "10"
+    restart: unless-stopped

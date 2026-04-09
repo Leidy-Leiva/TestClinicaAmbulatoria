@@ -1,0 +1,7 @@
+{
+  "mcpServers": {
+    "crud-mcp": {
+      "url": "http://localhost:8000/mcp"
+    }
+  }
+}

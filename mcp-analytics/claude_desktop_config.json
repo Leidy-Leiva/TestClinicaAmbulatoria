@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "clinica-analytics-mcp": {
+      "command": "docker",
+      "args": [
+        "run",
+        "--rm",
+        "-i",
+        "-v", "mcp_crud_data:/data",
+        "-e", "DB_PATH=/data/crud.db",
+        "clinica-analytics-mcp:latest"
+      ]
+    }
+  }
+}
