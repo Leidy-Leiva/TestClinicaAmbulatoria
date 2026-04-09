@@ -1298,17 +1298,4 @@ Siempre confirma las operaciones destructivas antes de ejecutarlas.
 # ── Punto de entrada ───────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    import sys
-    init_db()
-    
-    port_idx = None
-    for i, arg in enumerate(sys.argv):
-        if arg == "--port" or arg == "-p":
-            port_idx = i + 1
-            break
-    
-    if port_idx and port_idx < len(sys.argv):
-        port = int(sys.argv[port_idx])
-        mcp.run(transport="http", host="0.0.0.0", port=port)
-    else:
-        mcp.run(transport="stdio")
+    mcp.run(transport="http", host="0.0.0.0", port=8000)

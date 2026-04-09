@@ -9,7 +9,7 @@ services:
     stdin_open: true
     tty: false
     ports:
-      - "8002:8000"
+      - "8002:8002"
     environment:
       OWM_API_KEY: ""
       HTTP_TIMEOUT: "10"

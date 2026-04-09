@@ -3,52 +3,77 @@ Agente Orquestador para Cierre de Turno - Clínica Centro Médico Norte
 Orquesta los MCPs disponibles para generar el cierre de turno
 """
 
-from google.adk.agents import LlmAgent
-from google.adk.models.lite_llm import LiteLlm
-from google.adk.tools.mcp_tool import McpToolset
-from google.adk.tools.mcp_tool.mcp_session_manager import StdioServerParameters
 from datetime import datetime
 
-HOY = datetime.now().strftime("%Y-%m-%d")
+from google.adk.agents import LlmAgent
+from google.adk.tools.mcp_tool import McpToolset
+from google.adk.models.lite_llm import LiteLlm
+from google.adk.tools.mcp_tool.mcp_session_manager import StreamableHTTPConnectionParams
 
-mcp_tools = McpToolset(
-    connection_params=StdioServerParameters(
-        command="python",
-        args=["-m", "mcp.crud.server", "--port", "8000"],
+
+HOY = datetime.now().strftime("%Y-%m-%d")
+REPORTE = f"cierre_{HOY}_Centro_Medico_Norte.md"
+
+crud_toolset = McpToolset(
+    connection_params=StreamableHTTPConnectionParams(
+        url="http://localhost:8000/mcp",
+    )
+)
+
+analytics_toolset = McpToolset(
+    connection_params=StreamableHTTPConnectionParams(
+        url="http://localhost:8001/mcp",
+    )
+)
+
+weather_toolset = McpToolset(
+    connection_params=StreamableHTTPConnectionParams(
+        url="http://localhost:8002/mcp",
+    )
+)
+
+filesystem_toolset = McpToolset(
+    connection_params=StreamableHTTPConnectionParams(
+        url="http://localhost:8003/mcp",
     )
 )
 
 root_agent = LlmAgent(
-    model=LiteLlm(model="ollama_chat/qwen2.5:7b-instruct"),
+    model=LiteLlm(model="bedrock/anthropic.claude-3-haiku-20240307-v1:0"),
     name="orquestador_cierre_turno",
     description="Orquesta MCPs para generar cierre de turno",
-    instruction=f"""
-Eres el agente orquestador que debe usar las herramientas MCP disponibles para generar el cierre de turno.
+instruction=f"""
+Eres un agente autónomo de análisis clínico.
 
-Objetivo: Generar el cierre del turno de hoy ({HOY}) para la clínica "Centro Médico Norte"
+Tu objetivo es generar el cierre del turno del día {HOY} para la clínica Centro Médico Norte.
 
-Debes ejecutar estas herramientas EN ORDEN:
+Tienes acceso a herramientas MCP que puedes usar libremente para obtener información.
 
-1. list_clinicas(nombre="Centro Médico Norte") → obtener ID de la clínica
-2. list_turnos(fecha="{HOY}", clinica_id=ID_OBTENIDO) → turnos del día
-3. list_atenciones() → diagnósticos de pacientes
-4. list_medicamentos(low_stock=True) → inventario
-5. porcentaje_ocupacion(fecha="{HOY}") → % ocupación
-6. proyectar_stock_manana() → proyección stock
-7. clima_actual(ciudad="Bogotá") → clima
-8. calidad_aire(ciudad="Bogotá") → calidad del aire
-9. Generar reporte Markdown con toda la información
-10. write_file(path="cierre_{HOY}_Centro_Medico_Norte.md", content=REPORTE)
+REGLAS:
 
-El reporte debe incluir:
-- Resumen del turno (pacientes atendidos, turnos, hora inicio/cierre)
-- Top 3 diagnósticos del día
-- Estado del inventario (NORMAL/BAJO/CRÍTICO)
-- Proyección de stock para mañana
-- Alertas sanitarias (clima, calidad del aire)
-- Recomendaciones
+- Decide qué información necesitas y cuándo obtenerla.
+- Usa MCPs solo cuando sea necesario.
+- No inventes datos.
+- Puedes hacer múltiples llamadas a herramientas.
+- No existe un orden obligatorio de ejecución.
 
-Usa SOLO los datos reales devueltos por las herramientas. NO inventes información.
-""",
-    tools=[mcp_tools],
+REQUISITOS DEL RESULTADO FINAL:
+
+El reporte debe contener (si la información está disponible):
+
+1. Actividad clínica del día (turnos, atenciones)
+2. Diagnósticos principales
+3. Estado del inventario de medicamentos
+4. Ocupación de la clínica
+5. Proyección de stock
+6. Condiciones externas relevantes (clima / alertas sanitarias)
+7. Recomendaciones operativas
+
+CONDICIÓN FINAL:
+
+Antes de guardar el reporte, debes verificar que tienes suficiente información para cada sección.
+
+Luego usa filesystem MCP para guardar el resultado en:
+cierre_{HOY}.md
+""",tools=[crud_toolset, analytics_toolset, weather_toolset, filesystem_toolset],
 )

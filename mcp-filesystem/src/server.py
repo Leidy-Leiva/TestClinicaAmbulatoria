@@ -571,4 +571,4 @@ Seguridad: Todas las rutas están restringidas al directorio raíz.
 
 if __name__ == "__main__":
     FS_ROOT.mkdir(parents=True, exist_ok=True)
-    mcp.run(transport="stdio")
+    mcp.run(transport="http", host="0.0.0.0", port=8003)

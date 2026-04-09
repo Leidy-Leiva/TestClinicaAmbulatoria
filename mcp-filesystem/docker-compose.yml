@@ -14,7 +14,7 @@ services:
       FS_ROOT: /workspace
       MAX_FILE_SIZE_MB: "10"
     ports:
-      - "8003:8000"
+      - "8003:8003"
     restart: unless-stopped
 
 volumes:
