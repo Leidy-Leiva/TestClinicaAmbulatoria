@@ -3,52 +3,42 @@ Agente Orquestador para Cierre de Turno - Clínica Centro Médico Norte
 Orquesta los MCPs disponibles para generar el cierre de turno
 """
 
-from google.adk.agents.llm_agent import LlmAgent
+from google.adk.agents import LlmAgent
 from google.adk.models.lite_llm import LiteLlm
+from google.adk.tools.mcp_tool import McpToolset
+from google.adk.tools.mcp_tool.mcp_session_manager import StdioServerParameters
 from datetime import datetime
 
 HOY = datetime.now().strftime("%Y-%m-%d")
+
+mcp_tools = McpToolset(
+    connection_params=StdioServerParameters(
+        command="python",
+        args=["-m", "mcp.crud.server", "--port", "8000"],
+    )
+)
 
 root_agent = LlmAgent(
     model=LiteLlm(model="ollama_chat/qwen2.5:7b-instruct"),
     name="orquestador_cierre_turno",
     description="Orquesta MCPs para generar cierre de turno",
     instruction=f"""
-Eres el agente orquestador que debe usar los MCPs disponibles para generar el cierre de turno.
+Eres el agente orquestador que debe usar las herramientas MCP disponibles para generar el cierre de turno.
 
 Objetivo: Generar el cierre del turno de hoy ({HOY}) para la clínica "Centro Médico Norte"
 
-MCPs DISPONIBLES (úsalos con sus herramientas):
+Debes ejecutar estas herramientas EN ORDEN:
 
-1. crud-mcp (localhost:8000) - Para datos de pacientes, turnos, inventario:
-   - list_clinicas(nombre="Centro Médico Norte")
-   - list_turnos(fecha="{HOY}")
-   - list_atenciones()
-   - list_medicamentos(low_stock=True)
-
-2. clinica-analytics-mcp (localhost:8001) - Para métricas:
-   - porcentaje_ocupacion(fecha="{HOY}")
-   - proyectar_stock_manana()
-
-3. weather-colombia-mcp (localhost:8002) - Para alertas sanitarias:
-   - clima_actual(ciudad="Bogotá")
-   - calidad_aire(ciudad="Bogotá")
-
-4. filesystem-mcp (localhost:8003) - Para guardar el reporte:
-   - write_file(path="cierre_{HOY}_Centro_Medico_Norte.md", content="...")
-
-EJECUTA ESTOS PASOS EN ORDEN:
-
-1. Llama a list_clinicas(nombre="Centro Médico Norte") para obtener el ID de la clínica
-2. Llama a list_turnos(fecha="{HOY}", clinica_id=EL_ID_OBTENIDO) para obtener los turnos del día
-3. Llama a list_atenciones() para obtener los diagnósticos de los pacientes
-4. Llama a list_medicamentos(low_stock=True) para ver el inventario
-5. Llama a porcentaje_ocupacion(fecha="{HOY}") para obtener el % de ocupación
-6. Llama a proyectar_stock_manana() para la proyección
-7. Llama a clima_actual(ciudad="Bogotá") para el clima
-8. Llama a calidad_aire(ciudad="Bogotá") para la calidad del aire
-9. Con toda la información, genera un reporte en formato Markdown
-10. Llama a write_file para guardar el reporte
+1. list_clinicas(nombre="Centro Médico Norte") → obtener ID de la clínica
+2. list_turnos(fecha="{HOY}", clinica_id=ID_OBTENIDO) → turnos del día
+3. list_atenciones() → diagnósticos de pacientes
+4. list_medicamentos(low_stock=True) → inventario
+5. porcentaje_ocupacion(fecha="{HOY}") → % ocupación
+6. proyectar_stock_manana() → proyección stock
+7. clima_actual(ciudad="Bogotá") → clima
+8. calidad_aire(ciudad="Bogotá") → calidad del aire
+9. Generar reporte Markdown con toda la información
+10. write_file(path="cierre_{HOY}_Centro_Medico_Norte.md", content=REPORTE)
 
 El reporte debe incluir:
 - Resumen del turno (pacientes atendidos, turnos, hora inicio/cierre)
@@ -58,6 +48,7 @@ El reporte debe incluir:
 - Alertas sanitarias (clima, calidad del aire)
 - Recomendaciones
 
-No inventes datos. Usa únicamente la información que devuelvan los MCPs.
-"""
+Usa SOLO los datos reales devueltos por las herramientas. NO inventes información.
+""",
+    tools=[mcp_tools],
 )
