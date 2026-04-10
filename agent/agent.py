@@ -87,7 +87,7 @@ Genera un reporte en Markdown con:
 
 ### 5️⃣ FASE 5: PERSISTENCIA - Escribir Archivo
 Usa la herramienta `write_file` del servidor filesystem para guardar en:
-`cierre_{HOY}.md` (ruta absoluta: /workspace/cierre_{HOY}.md)
+`cierre_{HOY}.md` (ruta absoluta: /workspace/cierre_{HOY}.md - NO agregues subcarpetas, solo el nombre del archivo)
 
 REGLAS:
 - NO puedes saltarte fases
@@ -104,7 +104,7 @@ Antes de terminar, verifica:
 - ✅ Consultaste stock de medicamentos?
 - ✅ Calculaste porcentaje de ocupación?
 - ✅ Proyectaste stock para mañana?
-- ✅ Escribiste el archivo en /workspace/cierre_{HOY}.md?
+- ✅ Escribiste el archivo en /workspace/cierre_{HOY}.md? (Debe ser directamente en /workspace, NO en /workspace/workspace/)
 
 Si algo falla → continúa iterando hasta completar.
 
