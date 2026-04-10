@@ -9,7 +9,7 @@ services:
     stdin_open: true
     tty: false
     volumes:
-      - mcp_data:/workspace
+      - ./workspace:/workspace
     environment:
       FS_ROOT: /workspace
       MAX_FILE_SIZE_MB: "10"

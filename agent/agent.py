@@ -1,18 +1,25 @@
 """
 Agente Orquestador para Cierre de Turno - Clínica Centro Médico Norte
 Orquesta los MCPs disponibles para generar el cierre de turno
+
+El agente ejecuta de forma autónoma las siguientes acciones, en el orden correcto:
+1. API externa: Consultar alertas sanitarias o epidemiológicas en la ciudad
+2. Base de datos: Obtener el resumen del turno (pacientes, diagnósticos, medicamentos)
+3. Base de datos: Consultar stock de medicamentos y compararlo con el consumo
+4. Analytics: Calcular porcentaje de ocupación y proyectar stock para mañana
+5. Filesystem: Escribir el reporte en /workspace/cierre_YYYY-MM-DD.md
 """
 
 from datetime import datetime
 
 from google.adk.agents import LlmAgent
+from google.adk.models import LiteLlm
 from google.adk.tools.mcp_tool import McpToolset
-from google.adk.models.lite_llm import LiteLlm
 from google.adk.tools.mcp_tool.mcp_session_manager import StreamableHTTPConnectionParams
 
 
 HOY = datetime.now().strftime("%Y-%m-%d")
-REPORTE = f"cierre_{HOY}_Centro_Medico_Norte.md"
+REPORTE = f"cierre_{HOY}.md"
 
 crud_toolset = McpToolset(
     connection_params=StreamableHTTPConnectionParams(
@@ -38,42 +45,71 @@ filesystem_toolset = McpToolset(
     )
 )
 
+from google.adk.models import Gemini
+
 root_agent = LlmAgent(
-    model=LiteLlm(model="bedrock/anthropic.claude-3-haiku-20240307-v1:0"),
+    model = LiteLlm(model="bedrock/us.amazon.nova-lite-v1:0"),
     name="orquestador_cierre_turno",
     description="Orquesta MCPs para generar cierre de turno",
-instruction=f"""
-Eres un agente autónomo de análisis clínico.
+    instruction=f"""
+Eres un agente autónomo de análisis clínico encargado de generar el cierre del turno del día para la clínica "Centro Médico Norte".
 
-Tu objetivo es generar el cierre del turno del día {HOY} para la clínica Centro Médico Norte.
+Tu objetivo es completar el reporte del día {HOY} utilizando herramientas externas (MCPs) en el orden correcto.
 
-Tienes acceso a herramientas MCP que puedes usar libremente para obtener información.
+---
+
+## 🚀 FLUJO DE EJECUCIÓN (ORDEN OBLIGATORIO)
+
+Debes ejecutar las siguientes acciones EN ORDEN:
+
+### 1️⃣ FASE 1: API EXTERNA - Alertas Sanitarias
+Usa la herramienta `alertas_sanitarias(ciudad="Bogotá")` del servidor weather para consultar si hay alertas epidemiológicas o sanitarias en la zona de la clínica.
+
+### 2️⃣ FASE 2: BASE DE DATOS (CRUD) - Resumen del Turno
+Usa las herramientas del servidor crud para obtener:
+- `list_turnos(fecha={HOY})` → Turnos del día
+- `list_atenciones()` → Atenciones realizadas
+- `list_medicamentos()` → Lista de medicamentos
+
+### 3️⃣ FASE 3: BASE DE DATOS (Analytics) - Análisis
+Usa las herramientas del servidor analytics para:
+- `porcentaje_ocupacion(fecha={HOY})` → Calcular % de ocupación
+- `proyectar_stock_manana()` → Proyectar stock para mañana
+
+### 4️⃣ FASE 4: GENERACIÓN DEL REPORTE
+Genera un reporte en Markdown con:
+1. Resumen Ejecutivo (pacientes atendidos, turnos)
+2. Top 3 Diagnósticos (del día)
+3. Gestión de Insumos (stock vs consumo)
+4. Ocupación (%)
+5. Alertas Sanitarias
+6. Recomendaciones
+
+### 5️⃣ FASE 5: PERSISTENCIA - Escribir Archivo
+Usa la herramienta `write_file` del servidor filesystem para guardar en:
+`cierre_{HOY}.md` (ruta absoluta: /workspace/cierre_{HOY}.md)
 
 REGLAS:
+- NO puedes saltarte fases
+- Debes seguir el orden: API → CRUD → Analytics → Reporte → Filesystem
+- El archivo debe llamarse exactamente: cierre_{HOY}.md
 
-- Decide qué información necesitas y cuándo obtenerla.
-- Usa MCPs solo cuando sea necesario.
-- No inventes datos.
-- Puedes hacer múltiples llamadas a herramientas.
-- No existe un orden obligatorio de ejecución.
+---
 
-REQUISITOS DEL RESULTADO FINAL:
+## 🧪 VALIDACIÓN FINAL
 
-El reporte debe contener (si la información está disponible):
+Antes de terminar, verifica:
+- ✅ Ejecutaste alertas_sanitarias?
+- ✅ Obtuviste turnos y atenciones del día?
+- ✅ Consultaste stock de medicamentos?
+- ✅ Calculaste porcentaje de ocupación?
+- ✅ Proyectaste stock para mañana?
+- ✅ Escribiste el archivo en /workspace/cierre_{HOY}.md?
 
-1. Actividad clínica del día (turnos, atenciones)
-2. Diagnósticos principales
-3. Estado del inventario de medicamentos
-4. Ocupación de la clínica
-5. Proyección de stock
-6. Condiciones externas relevantes (clima / alertas sanitarias)
-7. Recomendaciones operativas
+Si algo falla → continúa iterando hasta completar.
 
-CONDICIÓN FINAL:
+---
 
-Antes de guardar el reporte, debes verificar que tienes suficiente información para cada sección.
-
-Luego usa filesystem MCP para guardar el resultado en:
-cierre_{HOY}.md
+Actúa de forma autónoma, pero respetando el flujo por fases.
 """,tools=[crud_toolset, analytics_toolset, weather_toolset, filesystem_toolset],
 )
