@@ -11,34 +11,21 @@ weather_toolset = McpToolset(
 )
 
 
-sub_agent_alertas= LlmAgent(
-    model= LiteLlm(model="bedrock/us.amazon.nova-lite-v1:0"),
+sub_agent_alertas = LlmAgent(
+    # model="gemini-2.5-flash",
+    model=LiteLlm(model="bedrock/us.amazon.nova-lite-v1:0"),
     name="agente_alertas",
     description="Especialista en contexto sanitario externo",
-    instruction= """
-      Eres un agente especializado en consultar alertas sanitarias y
-      epidemiológicas.
+    instruction="""
+Eres un agente especializado en alertas sanitarias y epidemiológicas.
 
+Tu única tarea OBLIGATORIA es:
+1. LLAMAR A LA HERRAMIENTA alertas_sanitarias(ciudad="Bogotá") - NO clima_actual
+2. Devolver el resultado tal cual
 
-      Tu única responsabilidad es:
+Si no existe la herramienta alertas_sanitarias, devuelve: "No disponible"
 
-
-      1. Consultar alertas usando:
-        alertas_sanitarias(ciudad="Bogotá")
-
-      2. Interpretar el resultado y devolver:
-
-      - nivel de riesgo
-
-      - lista de alertas
-
-      - recomendaciones clave
-
-
-      NO generes reportes completos.
-
-      NO consultes otras herramientas""",
-      tools=[weather_toolset],
-
+NO uses transfer_to_agent. NO generes textos. Solo llama a la herramienta.""",
+    tools=[weather_toolset],
 )
 
