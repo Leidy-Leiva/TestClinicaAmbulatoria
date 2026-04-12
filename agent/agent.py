@@ -3,11 +3,7 @@ Agente Orquestador para Cierre de Turno - Clínica Centro Médico Norte
 Orquesta los MCPs disponibles para generar el cierre de turno
 
 El agente ejecuta de forma autónoma las siguientes acciones, en el orden correcto:
-1. API externa: Consultar alertas sanitarias o epidemiológicas en la ciudad
-2. Base de datos: Obtener el resumen del turno (pacientes, diagnósticos, medicamentos)
-3. Base de datos: Consultar stock de medicamentos y compararlo con el consumo
-4. Analytics: Calcular porcentaje de ocupación y proyectar stock para mañana
-5. Filesystem: Escribir el reporte en /workspace/cierre_YYYY-MM-DD.md
+
 """
 
 from datetime import datetime
@@ -16,6 +12,8 @@ from google.adk.agents import LlmAgent
 from google.adk.models import LiteLlm
 from google.adk.tools.mcp_tool import McpToolset
 from google.adk.tools.mcp_tool.mcp_session_manager import StreamableHTTPConnectionParams
+from google.adk.models import Gemini
+
 
 
 HOY = datetime.now().strftime("%Y-%m-%d")
@@ -45,10 +43,9 @@ filesystem_toolset = McpToolset(
     )
 )
 
-from google.adk.models import Gemini
 
 root_agent = LlmAgent(
-    model = LiteLlm(model="bedrock/us.amazon.nova-lite-v1:0"),
+    model = LiteLlm(model="bedrock/us.amazon.nova-lite-v1:0"),    
     name="orquestador_cierre_turno",
     description="Orquesta MCPs para generar cierre de turno",
     instruction=f"""
