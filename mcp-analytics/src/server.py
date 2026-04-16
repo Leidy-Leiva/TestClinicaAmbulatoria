@@ -63,60 +63,66 @@ def porcentaje_ocupacion(
     fecha: Optional[str] = None,
     clinica_id: Optional[int] = None,
 ) -> dict:
-    """
-    Calcula el porcentaje de ocupación de turnos para una fecha específica.
 
-    Args:
-        fecha: Fecha a analizar (YYYY-MM-DD). Por defecto, hoy.
-        clinica_id: ID de la clínica para filtrar (opcional).
-
-    Returns:
-        Porcentaje de ocupación, turnos totales, turnos ocupados, turnos disponibles.
-    """
     if fecha is None:
         fecha = get_hoy()
 
+    if clinica_id is None:
+        raise ValueError("clinica_id es obligatorio")
+
     with get_connection() as conn:
-        base_query = "SELECT COUNT(*) as total FROM turnos WHERE fecha = ?"
-        params = [fecha]
 
-        if clinica_id is not None:
-            base_query += " AND clinica_id = ?"
-            params.append(clinica_id)
+        # 🔹 1. Capacidad máxima de la clínica
+        max_query = """
+        SELECT cantidad_pacientes_maximo 
+        FROM clinicas 
+        WHERE id = ?
+        """
+        max_result = conn.execute(max_query, [clinica_id]).fetchone()
 
-        total_turnos = conn.execute(base_query, params).fetchone()["total"]
+        if not max_result:
+            raise ValueError("Clínica no encontrada")
 
-        ocup_query = base_query + " AND estado != 'cancelado'"
-        turnos_ocupados = conn.execute(ocup_query, params).fetchone()["total"]
+        capacidad_maxima = max_result["cantidad_pacientes_maximo"]
 
-        turnos_programados = conn.execute(
-            base_query + " AND estado = 'programado'", params
+        ocup_query = """
+        SELECT COUNT(*) as total
+        FROM turnos
+        WHERE fecha = ?
+        AND clinica_id = ?
+        AND estado != 'cancelado'
+        """
+        ocupados = conn.execute(ocup_query, [fecha, clinica_id]).fetchone()["total"]
+
+        programados = conn.execute(
+            "SELECT COUNT(*) as total FROM turnos WHERE fecha = ? AND clinica_id = ? AND estado = 'programado'",
+            [fecha, clinica_id],
         ).fetchone()["total"]
 
-        turnos_atendidos = conn.execute(
-            base_query + " AND estado = 'atendido'", params
+        atendidos = conn.execute(
+            "SELECT COUNT(*) as total FROM turnos WHERE fecha = ? AND clinica_id = ? AND estado = 'atendido'",
+            [fecha, clinica_id],
         ).fetchone()["total"]
 
-        turnos_en_atencion = conn.execute(
-            base_query + " AND estado = 'en_atencion'", params
+        en_atencion = conn.execute(
+            "SELECT COUNT(*) as total FROM turnos WHERE fecha = ? AND clinica_id = ? AND estado = 'en_atencion'",
+            [fecha, clinica_id],
         ).fetchone()["total"]
 
-        ocup_real = turnos_programados + turnos_atendidos + turnos_en_atencion
-
-    porcentaje = round((ocup_real / total_turnos * 100), 2) if total_turnos > 0 else 0
+    ocup_real = ocupados
+    porcentaje = round((ocup_real / capacidad_maxima) * 100, 2) if capacidad_maxima > 0 else 0
 
     return {
         "fecha": fecha,
         "clinica_id": clinica_id,
-        "turnos_totales": total_turnos,
+        "capacidad_maxima": capacidad_maxima,
         "turnos_ocupados": ocup_real,
-        "turnos_disponibles": total_turnos - ocup_real,
-        "turnos_programados": turnos_programados,
-        "turnos_atendidos": turnos_atendidos,
-        "turnos_en_atencion": turnos_en_atencion,
+        "turnos_disponibles": capacidad_maxima - ocup_real,
+        "turnos_programados": programados,
+        "turnos_atendidos": atendidos,
+        "turnos_en_atencion": en_atencion,
         "porcentaje_ocupacion": porcentaje,
     }
-
 
 @mcp.tool()
 def ocupacion_por_clinica(fecha: Optional[str] = None) -> dict:

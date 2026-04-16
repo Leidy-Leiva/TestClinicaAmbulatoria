@@ -60,7 +60,8 @@ def init_db() -> None:
                 telefono TEXT,
                 email TEXT,
                 ciudad TEXT,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                cantidad_pacientes_maximo INTEGER
             )
         """)
         
