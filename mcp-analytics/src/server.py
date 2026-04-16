@@ -65,13 +65,14 @@ def porcentaje_ocupacion(
 ) -> dict:
     """
     Calcula el porcentaje de ocupación de turnos para una fecha específica.
+    Usa pacientes únicos vs capacidad máxima de la clínica.
 
     Args:
         fecha: Fecha a analizar (YYYY-MM-DD). Por defecto, hoy.
         clinica_id: ID de la clínica para filtrar (opcional).
 
     Returns:
-        Porcentaje de ocupación, turnos totales, turnos ocupados, turnos disponibles.
+        Porcentaje de ocupación, turnos totales, pacientes únicos, capacidad.
     """
     if fecha is None:
         fecha = get_hoy()
@@ -86,35 +87,32 @@ def porcentaje_ocupacion(
 
         total_turnos = conn.execute(base_query, params).fetchone()["total"]
 
-        ocup_query = base_query + " AND estado != 'cancelado'"
-        turnos_ocupados = conn.execute(ocup_query, params).fetchone()["total"]
-
-        turnos_programados = conn.execute(
-            base_query + " AND estado = 'programado'", params
+        pacientes_unicos = conn.execute(
+            f"SELECT COUNT(DISTINCT paciente_id) as total FROM turnos WHERE fecha = ?" + 
+            (" AND clinica_id = ?" if clinica_id else ""),
+            params
         ).fetchone()["total"]
 
-        turnos_atendidos = conn.execute(
-            base_query + " AND estado = 'atendido'", params
-        ).fetchone()["total"]
+        capacidad = 10
+        if clinica_id:
+            cap_row = conn.execute(
+                "SELECT cantidad_pacientes_maximo FROM clinicas WHERE id = ?", 
+                [clinica_id]
+            ).fetchone()
+            if cap_row:
+                capacidad = cap_row["cantidad_pacientes_maximo"]
 
-        turnos_en_atencion = conn.execute(
-            base_query + " AND estado = 'en_atencion'", params
-        ).fetchone()["total"]
-
-        ocup_real = turnos_programados + turnos_atendidos + turnos_en_atencion
-
-    porcentaje = round((ocup_real / total_turnos * 100), 2) if total_turnos > 0 else 0
+    porcentaje = round((pacientes_unicos / capacidad * 100), 2) if capacidad > 0 else 0
+    nivel = "BAJO" if porcentaje < 30 else "NORMAL" if porcentaje < 70 else "ALTO" if porcentaje < 90 else "CRITICO"
 
     return {
         "fecha": fecha,
         "clinica_id": clinica_id,
+        "capacidad": capacidad,
+        "pacientes_unicos": pacientes_unicos,
         "turnos_totales": total_turnos,
-        "turnos_ocupados": ocup_real,
-        "turnos_disponibles": total_turnos - ocup_real,
-        "turnos_programados": turnos_programados,
-        "turnos_atendidos": turnos_atendidos,
-        "turnos_en_atencion": turnos_en_atencion,
         "porcentaje_ocupacion": porcentaje,
+        "nivel_ocupacion": nivel,
     }
 
 
@@ -330,26 +328,23 @@ def metricas_clinica(
         fecha_inicio = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
 
     with get_connection() as conn:
-        where_clinica = " AND clinica_id = ?" if clinica_id else ""
-        params = [fecha_inicio, fecha_fin]
+        params_turnos = [fecha_inicio, fecha_fin]
         if clinica_id:
-            params.append(clinica_id)
+            params_turnos.append(clinica_id)
 
         turnos_total = conn.execute(
-            f"SELECT COUNT(*) as total FROM turnos WHERE fecha >= ? AND fecha <= ?{where_clinica}",
-            params
+            "SELECT COUNT(*) as total FROM turnos WHERE fecha >= ? AND fecha <= ?" + (" AND clinica_id = ?" if clinica_id else ""),
+            params_turnos
         ).fetchone()["total"]
 
         turnos_ocupados = conn.execute(
-            f"""SELECT COUNT(*) as total FROM turnos 
-                WHERE fecha >= ? AND fecha <= ? AND estado != 'cancelado'{where_clinica}""",
-            params
+            "SELECT COUNT(*) as total FROM turnos WHERE fecha >= ? AND fecha <= ? AND estado != 'cancelado'" + (" AND clinica_id = ?" if clinica_id else ""),
+            params_turnos
         ).fetchone()["total"]
 
         atenciones = conn.execute(
-            f"""SELECT COUNT(*) as total FROM atenciones 
-                WHERE created_at >= ? AND created_at <= ?{where_clinica}""",
-            params
+            "SELECT COUNT(*) as total FROM atenciones WHERE created_at >= ? AND created_at <= ?",
+            [fecha_inicio, fecha_fin]
         ).fetchone()["total"]
 
         promedio_diario = round(turnos_ocupados / 30, 2) if turnos_ocupados > 0 else 0

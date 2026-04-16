@@ -10,7 +10,7 @@ Cada agente recibe el historial de conversación completo, lo que permite
 al agente_reporte acceder a los resultados de todos los anteriores.
 """
 
-from google.adk.agents import LlmAgent
+from google.adk.agents  import LlmAgent
 from google.adk.models import LiteLlm
 from agentPrincipal import agente_alertas
 from agentPrincipal import agente_datos

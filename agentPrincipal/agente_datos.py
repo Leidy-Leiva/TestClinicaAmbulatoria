@@ -1,12 +1,6 @@
 """
 Agente Datos - Obtiene datos clínicos del turno.
 MCP: crud-mcp (http://localhost:8000/mcp)
-
-Herramientas reales disponibles en crud-mcp:
-  - get_clinica_stats()          → estadísticas generales (total pacientes, atenciones, turnos)
-  - list_turnos(fecha, estado)   → turnos del día filtrados por fecha/estado
-  - list_atenciones()            → atenciones registradas con diagnósticos
-  - list_medicamentos()          → stock de medicamentos
 """
 
 from google.adk.agents import LlmAgent
@@ -24,45 +18,56 @@ crud_toolset = McpToolset(
 HOY = date.today().isoformat()
 
 sub_agent_crud = LlmAgent(
-    model=LiteLlm(model="bedrock/us.amazon.nova-lite-v1:0"),
+    model="gemini-2.5-flash-lite",
     name="agente_datos",
-    description=(
-        "Obtiene datos clínicos del turno: estadísticas, atenciones, diagnósticos y stock de medicamentos. "
-        "Usa las herramientas del CRUD MCP."
-    ),
+    description=("Obtiene datos clínicos del turno."),
     instruction=f"""
-Eres un agente encargado de recolectar los datos clínicos del turno del día {HOY}.
+Eres un agente que debe ejecutar herramientas para obtener datos reales.
 
-Ejecuta EXACTAMENTE estas herramientas en orden:
+El NOMBRE de la clínica viene en el mensaje del usuario. 
+Ejemplo: "Genera el cierre del turno de hoy para la clinica Centro Medico Norte"
+El nombre sería "Centro Medico Norte".
 
-1. get_clinica_stats()
-   → Devuelve estadísticas generales: total_pacientes, total_atenciones, total_turnos, turnos_por_estado, medicamentos_bajo_stock
+EJECUTA EN ORDEN:
 
-2. list_turnos(fecha="{HOY}", limit=50)
-   → Devuelve todos los turnos del día de hoy con su estado (programado/atendido/cancelado)
+1. list_clinicas(nombre=[NOMBRE_DE_LA_CLINICA_DEL_USUARIO], limit=1)
+   - El resultado tiene 'items' (array)
+   - Del primer item, extrae: id (clinica_id), cantidad_pacientes_maximo (capacidad), nombre
+   - GUARDA estos valores para las siguientes llamadas
 
-3. list_atenciones(limit=50)
-   → Devuelve las atenciones del día con diagnósticos y tratamientos
+2. list_turnos(fecha="{HOY}", clinica_id=[EL_CLINICA_ID_OBTENIDO], limit=50)
+   - Obtiene: total turnos, atendidos (estado='atendido'), programados (estado='programado')
+
+3. list_atenciones(fecha="{HOY}", clinica_id=[EL_CLINICA_ID_OBTENIDO], limit=100)
+   - Obtiene: total atenciones, pacientes únicos atendidos, diagnósticos
 
 4. list_medicamentos(limit=50)
-   → Devuelve el inventario completo de medicamentos con stock_actual y stock_minimo
+   - Obtiene: medicamentos con stock_actual y stock_minimo
 
-Después de ejecutar las 4 herramientas, construye y devuelve un JSON con esta estructura:
+IMPORTANTE: 
+- Busca la clínica PRIMERO para obtener su clinica_id
+- Usa ese clinica_id en TODAS las consultas de turnos y atenciones
+
+LUEGO DEVUELVE JSON con datos reales:
 {{
   "fecha": "{HOY}",
-  "estadisticas": <resultado completo de get_clinica_stats>,
-  "turnos_hoy": <resultado completo de list_turnos>,
-  "atenciones": <resultado completo de list_atenciones>,
-  "medicamentos_stock": <resultado completo de list_medicamentos>
+  "clinica_id": [EL_ID_OBTENIDO],
+  "clinica_nombre": "[NOMBRE_DE_LA_CLINICA]",
+  "capacidad": [CANTIDAD_PACIENTES_MAXIMO],
+  "turnos": {{
+    "total": [NUMERO_REAL],
+    "atendidos": [NUMERO_REAL],
+    "programados": [NUMERO_REAL]
+  }},
+  "atenciones": {{
+    "total": [NUMERO_REAL],
+    "pacientes_atendidos": [NUMERO_REAL],
+    "diagnosticos": [ARRAY_DE_DIAGNOSTICOS]
+  }},
+  "medicamentos": [ARRAY_DE_MEDICAMENTOS]
 }}
 
-REGLAS ESTRICTAS:
-- NO uses transfer_to_agent bajo ninguna circunstancia.
-- NO uses herramientas que no existen como get_resumen_turno o get_medicamentos_usados.
-- NO generes datos inventados.
-- Si una herramienta falla, incluye {{"error": "descripcion del error"}} en ese campo del JSON.
-- Si no hay atenciones, devuelve el JSON con arrays vacíos pero NO falles.
-- Responde ÚNICAMENTE con el JSON resultado, sin texto adicional.
+Responde SOLO con JSON, sin texto adicional.
 """,
     tools=[crud_toolset],
 )

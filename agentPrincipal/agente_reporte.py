@@ -1,15 +1,6 @@
 """
-Agente Reporte - Genera el reporte final de cierre de turno en Markdown.
-MCP: filesystem-mcp (http://localhost:8003/mcp)
-
-Herramienta: write_file(path="cierre_YYYY-MM-DD.md", content=<markdown>, overwrite=true)
-NOTA: El filesystem-mcp tiene FS_ROOT=/workspace → path es RELATIVO (sin /workspace/).
-
-CORRECCIONES v3:
-- write_file se llama SIEMPRE como PRIMERA accion, sin verificar si existe.
-- overwrite=true SIEMPRE, garantiza sobreescritura si el archivo ya existe.
-- Prohibicion absoluta de get_file_info, list_directory y read_file.
-- Funciona correctamente tanto en adk web como en run_pipeline.py.
+Agente Reporte - Genera el reporte final de cierre de turno.
+MCP: filesystem-mcp, crud-mcp, analytics-mcp
 """
 
 from google.adk.agents import LlmAgent
@@ -19,43 +10,38 @@ from google.adk.tools.mcp_tool.mcp_session_manager import StreamableHTTPConnecti
 from datetime import datetime, date
 
 filesystem_toolset = McpToolset(
-    connection_params=StreamableHTTPConnectionParams(
-        url="http://localhost:8003/mcp",
-    )
+    connection_params=StreamableHTTPConnectionParams(url="http://localhost:8003/mcp")
+)
+crud_toolset = McpToolset(
+    connection_params=StreamableHTTPConnectionParams(url="http://localhost:8000/mcp")
+)
+analytics_toolset = McpToolset(
+    connection_params=StreamableHTTPConnectionParams(url="http://localhost:8001/mcp")
 )
 
 HOY = date.today().isoformat()
 HORA_ACTUAL = datetime.now().strftime("%H:%M")
-NOMBRE_ARCHIVO = f"cierre_{HOY}.md"
 
 sub_agent_reporte = LlmAgent(
-    model=LiteLlm(model="bedrock/us.amazon.nova-lite-v1:0"),
+    model="gemini-2.5-flash-lite",
     name="agente_reporte",
-    description=(
-        "Genera el reporte final de cierre de turno en formato Markdown "
-        f"y lo guarda como '{NOMBRE_ARCHIVO}' usando el filesystem MCP. "
-        "Siempre sobreescribe el archivo aunque ya exista."
-    ),
-    instruction=f"""Eres el agente final del pipeline de cierre de turno de la clinica Centro Medico Norte.
+    description=("Genera y guarda reporte de cierre de turno."),
+    instruction=f"""
+Eres un agente que debe generar Y GUARDAR el reporte de cierre de turno.
 
-REGLAS ABSOLUTAS - LEER ANTES DE ACTUAR:
-1. Tu PRIMERA y UNICA accion es llamar a write_file. Hazlo de inmediato.
-2. NO llames a get_file_info, list_directory, read_file ni ningun otro tool.
-3. NO verifiques si el archivo ya existe. SIEMPRE sobreescribe con overwrite=true.
-4. NO generes el reporte como texto en el chat sin haber llamado write_file.
-5. NO uses transfer_to_agent.
-6. NO uses tags <thinking>.
+El NOMBRE de la clínica viene en el mensaje del usuario.
 
-ACCION REQUERIDA - ejecuta esto AHORA:
+PASO 1: OBTENER DATOS (ejecuta en orden)
+1. list_clinicas(nombre=[NOMBRE_DE_LA_CLINICA], limit=1) → obtener clinica_id
+2. list_turnos(fecha="{HOY}", clinica_id=[CLINICA_ID], limit=50)
+3. list_atenciones(fecha="{HOY}", clinica_id=[CLINICA_ID], limit=100)
+4. list_medicamentos(limit=50)
+5. proyectar_stock_manana()
+6. porcentaje_ocupacion(fecha="{HOY}", clinica_id=[CLINICA_ID])
 
-Llama a write_file con estos parametros EXACTOS:
-- path: "{NOMBRE_ARCHIVO}"
-- overwrite: true
-- content: el reporte Markdown completo (ver plantilla abajo)
+PASO 2: GENERAR REPORTE EXACTO - USA ESTA PLANTILLA TAL CUAL:
 
-PLANTILLA DEL REPORTE (rellena con los datos del historial de conversacion):
-
-# Cierre de Turno - Centro Medico Norte
+# Cierre de Turno - [NOMBRE_DE_LA_CLINICA]
 **Fecha:** {HOY}
 **Hora de cierre:** {HORA_ACTUAL}
 **Generado por:** Sistema Automatico de Cierre de Turno 
@@ -63,82 +49,57 @@ PLANTILLA DEL REPORTE (rellena con los datos del historial de conversacion):
 ---
 
 ## Resumen del Turno
-- Total turnos del dia: [numero de turnos de agente_datos list_turnos]
-- Turnos atendidos: [turnos con estado=atendido]
-- Turnos programados pendientes: [turnos con estado=programado]
-- Pacientes atendidos: [total_pacientes de agente_datos estadisticas]
-- Porcentaje de ocupacion: [porcentaje_ocupacion de agente_analytics]%
-- Nivel de ocupacion: [BAJO/NORMAL/ALTO/CRITICO de agente_analytics]
-
----
-
-## Diagnosticos del Dia (Top 3)
-[Extrae diagnosticos de agente_datos list_atenciones, cuenta frecuencia, ordena de mayor a menor]
-- [Diagnostico mas frecuente]: [N] caso(s)
-- [Segundo diagnostico]: [N] caso(s)
-- [Tercer diagnostico]: [N] caso(s)
+- Total turnos del dia: [numero total de turnos]
+- Turnos atendidos: [numero de turnos con estado='atendido']
+- Pacientes atendidos: [numero de pacientes unicos con atencion]
+- Porcentaje de ocupacion: [numero]%
+- Nivel de ocupacion: [BAJO/NORMAL/ALTO/CRITICO]
 
 ---
 
 ## Estado del Inventario de Medicamentos
-**Estado general:** [estado_general de agente_analytics inventario]
+**Estado general:** [OK/BAJO STOCK/CRITICO]
 
-### Medicamentos Criticos (stock = 0)
-[Lista medicamentos con stock_actual=0 de agente_datos list_medicamentos, o escribe: Ninguno]
+Medicamentos Criticos (stock = 0): [lista de nombres o 'Ninguno']
 
-### Medicamentos con Stock Bajo (stock <= stock_minimo)
-[Lista medicamentos bajo stock de agente_analytics proyeccion_manana alertas_bajas, o escribe: Ninguno]
+Medicamentos con Stock Bajo (stock <= stock_minimo): [lista de nombres o 'Ninguno']
 
-### Proyeccion para Manana
-[Lista alertas_criticas y alertas_bajas de agente_analytics]
-- Total alertas de stock: [total_alertas]
+---
+
+## Proyeccion para Manana
+[lista de medicamentos que estaran sin stock o bajos manana, o 'No se proyectan alertas para manana']
 
 ---
 
 ## Metricas de Ocupacion
-- Total turnos registrados: [turnos_totales]
-- Turnos atendidos hoy: [turnos_atendidos]
-- Porcentaje de ocupacion: [porcentaje_ocupacion]%
-- Total atenciones registradas: [numero de items en list_atenciones]
-- Medicos activos: [total_medicos de agente_datos estadisticas]
+- Total turnos registrados: [numero]
+- Turnos atendidos hoy: [numero]
+- Porcentaje de ocupacion: [numero]%
+- Total atenciones registradas: [numero]
 
 ---
 
-## Alertas Sanitarias - Bogota
-**Nivel de riesgo:** [nivel_riesgo de agente_alertas]
-**Alertas activas:** [alertas_activas de agente_alertas]
-**Fuente:** [fuente de agente_alertas]
+## Alertas Sanitarias - [NOMBRE_CIUDAD]
+**Nivel de riesgo:** [nivel]
+**Alertas activas:** [numero]
 
-[Para cada alerta del array alertas de agente_alertas:]
-### [titulo de la alerta]
-- Tipo: [tipo]
-- Nivel: [nivel]
-- Descripcion: [descripcion]
-- Recomendaciones: [lista de recomendaciones]
-
-[Si agente_alertas no tiene datos: escribir "Sin alertas activas reportadas"]
+[descripcion de alertas]
 
 ---
 
 ## Recomendaciones Automaticas
-[Genera recomendaciones concretas segun los datos:]
-- Si Metformina 850mg u otro medicamento tiene stock=0: "URGENTE: Solicitar reposicion inmediata de [nombre]"
-- Si ocupacion >= 90%: "Considerar apertura de turno adicional manana"
-- Si hay alertas epidemiologicas activas: "Activar protocolo preventivo: [descripcion de la alerta]"
-- Si hay medicamentos bajo stock: "Programar compra urgente de [nombres]"
-- Siempre incluir: "Verificar y completar registros de atenciones del turno"
-- Siempre incluir: "Entregar informe al jefe de turno entrante"
+- Verificar y completar registros de atenciones del turno
+- Entregar informe al jefe de turno entrante
 
 ---
-*Reporte generado automaticamente - Sistema de Cierre de Turno v3*
-*Clinica Centro Medico Norte | {HOY} | {HORA_ACTUAL}*
 
-INSTRUCCION FINAL:
-Despues de llamar a write_file, responde UNICAMENTE con este texto:
-"Reporte guardado: /workspace/{NOMBRE_ARCHIVO} ([size_bytes] bytes) - Pipeline completado."
+*Reporte generado automaticamente - Sistema de Cierre de Turno*
+*[NOMBRE_DE_LA_CLINICA] | {HOY} | {HORA_ACTUAL}*
 
-Si write_file retorna error, responde:
-"Error al guardar: [mensaje de error]. Reporte: [contenido del markdown]"
+PASO 3: GUARDAR CON write_file
+- path: "cierre_{HOY}.md"
+- content: [EL REPORTE COMPLETO TAL CUAL]
+- overwrite: true
 """,
-    tools=[filesystem_toolset],
+    tools=[filesystem_toolset, crud_toolset, analytics_toolset],
 )

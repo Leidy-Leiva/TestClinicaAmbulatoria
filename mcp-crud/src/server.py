@@ -6,9 +6,19 @@ Proporciona herramientas para gestionar una base de datos de clínica ambulatori
 import sqlite3
 import os
 import platform
+import unicodedata
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 from fastmcp import FastMCP
+
+
+def normalizar_texto(texto: str) -> str:
+    """Normaliza texto quitando tildes y convirtiendo a mayúsculas."""
+    if not texto:
+        return texto
+    normales = unicodedata.normalize("NFD", texto)
+    sin_tildes = "".join(c for c in normales if unicodedata.category(c) != "Mn")
+    return sin_tildes.upper()
 
 if platform.system() == "Windows":
     DEFAULT_DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "crud.db")
@@ -38,7 +48,16 @@ def get_connection() -> sqlite3.Connection:
             raise RuntimeError(f"No hay permisos para crear el directorio: {db_dir}")
     try:
         conn = sqlite3.connect(DB_PATH)
+        conn.execute("PRAGMA encoding='UTF-8'")
         conn.row_factory = sqlite3.Row
+        
+        def clean_accents(text):
+            if text is None:
+                return text
+            return unicodedata.normalize("NFD", text).encode("ascii", "ignore").decode("ascii")
+        
+        conn.create_function("CLEAN", 1, clean_accents)
+        
         try:
             conn.execute("PRAGMA journal_mode=WAL")
         except sqlite3.OperationalError:
@@ -210,13 +229,15 @@ def list_clinicas(
     params = []
 
     if nombre:
-        query += " AND nombre LIKE ?"
-        count_query += " AND nombre LIKE ?"
-        params.append(f"%{nombre.strip()}%")
+        nombre_busqueda = nombre.strip()
+        query += " AND CLEAN(nombre) LIKE ? COLLATE NOCASE"
+        count_query += " AND CLEAN(nombre) LIKE ? COLLATE NOCASE"
+        params.append(f"%{nombre_busqueda}%")
     if ciudad:
-        query += " AND ciudad LIKE ?"
-        count_query += " AND ciudad LIKE ?"
-        params.append(f"%{ciudad.strip()}%")
+        ciudad_busqueda = ciudad.strip()
+        query += " AND CLEAN(ciudad) LIKE ? COLLATE NOCASE"
+        count_query += " AND CLEAN(ciudad) LIKE ? COLLATE NOCASE"
+        params.append(f"%{ciudad_busqueda}%")
 
     query += " ORDER BY id DESC LIMIT ? OFFSET ?"
 
@@ -367,9 +388,10 @@ def list_pacientes(
     params: list = []
 
     if nombre:
-        query += " AND nombre LIKE ?"
-        count_query += " AND nombre LIKE ?"
-        params.append(f"%{nombre.strip()}%")
+        nombre_busqueda = nombre.strip()
+        query += " AND CLEAN(nombre) LIKE ? COLLATE NOCASE"
+        count_query += " AND CLEAN(nombre) LIKE ? COLLATE NOCASE"
+        params.append(f"%{nombre_busqueda}%")
     if documento:
         query += " AND documento LIKE ?"
         count_query += " AND documento LIKE ?"
@@ -702,28 +724,38 @@ def list_atenciones(
     paciente_id: Optional[int] = None,
     medico_id: Optional[int] = None,
     estado: Optional[str] = None,
+    fecha: Optional[str] = None,
+    clinica_id: Optional[int] = None,
     limit: int = 50,
     offset: int = 0,
 ) -> dict:
-    """Lista atenciones con filtros."""
-    query = "SELECT * FROM atenciones WHERE 1=1"
-    count_query = "SELECT COUNT(*) FROM atenciones WHERE 1=1"
+    """Lista atenciones con filtros. Incluye fecha y clinica_id."""
+    query = "SELECT a.* FROM atenciones a WHERE 1=1"
+    count_query = "SELECT COUNT(*) FROM atenciones a WHERE 1=1"
     params = []
 
     if paciente_id:
-        query += " AND paciente_id = ?"
-        count_query += " AND paciente_id = ?"
+        query += " AND a.paciente_id = ?"
+        count_query += " AND a.paciente_id = ?"
         params.append(paciente_id)
     if medico_id:
-        query += " AND medico_id = ?"
-        count_query += " AND medico_id = ?"
+        query += " AND a.medico_id = ?"
+        count_query += " AND a.medico_id = ?"
         params.append(medico_id)
     if estado:
-        query += " AND estado = ?"
-        count_query += " AND estado = ?"
+        query += " AND a.estado = ?"
+        count_query += " AND a.estado = ?"
         params.append(estado)
+    if fecha:
+        query += " AND DATE(a.created_at) = ?"
+        count_query += " AND DATE(a.created_at) = ?"
+        params.append(fecha)
+    if clinica_id:
+        query += " AND a.turno_id IN (SELECT id FROM turnos WHERE clinica_id = ?)"
+        count_query += " AND a.turno_id IN (SELECT id FROM turnos WHERE clinica_id = ?)"
+        params.append(clinica_id)
 
-    query += " ORDER BY id DESC LIMIT ? OFFSET ?"
+    query += " ORDER BY a.id DESC LIMIT ? OFFSET ?"
 
     with get_connection() as conn:
         total = conn.execute(count_query, params).fetchone()[0]
@@ -826,9 +858,10 @@ def list_medicamentos(
     params = []
 
     if nombre:
-        query += " AND nombre LIKE ?"
-        count_query += " AND nombre LIKE ?"
-        params.append(f"%{nombre.strip()}%")
+        nombre_busqueda = nombre.strip()
+        query += " AND CLEAN(nombre) LIKE ? COLLATE NOCASE"
+        count_query += " AND CLEAN(nombre) LIKE ? COLLATE NOCASE"
+        params.append(f"%{nombre_busqueda}%")
     if principio_activo:
         query += " AND principio_activo LIKE ?"
         count_query += " AND principio_activo LIKE ?"
@@ -1034,9 +1067,10 @@ def list_medicos(
     params = []
 
     if nombre:
-        query += " AND nombre LIKE ?"
-        count_query += " AND nombre LIKE ?"
-        params.append(f"%{nombre.strip()}%")
+        nombre_busqueda = nombre.strip()
+        query += " AND CLEAN(nombre) LIKE ? COLLATE NOCASE"
+        count_query += " AND CLEAN(nombre) LIKE ? COLLATE NOCASE"
+        params.append(f"%{nombre_busqueda}%")
     if especialidad:
         query += " AND especialidad LIKE ?"
         count_query += " AND especialidad LIKE ?"

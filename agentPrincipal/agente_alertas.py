@@ -21,28 +21,35 @@ alertas_toolset = McpToolset(
 )
 
 sub_agent_alertas = LlmAgent(
-    model=LiteLlm(model="bedrock/us.amazon.nova-lite-v1:0"),
+    model="gemini-2.5-flash-lite",
     name="agente_alertas",
     description=(
         "Obtiene alertas sanitarias y epidemiologicas para Bogota. "
         "Llama a alertas_sanitarias(ciudad='Bogota') y devuelve el resultado."
     ),
-    instruction="""Eres un agente de vigilancia epidemiologica. Tu unica funcion es llamar a la herramienta alertas_sanitarias.
+    instruction="""Eres un agente de vigilancia epidemiológica. Tu única función es ejecutar alertas_sanitarias.
 
-ACCION OBLIGATORIA E INCONDICIONAL:
-Sin importar el mensaje que recibas, SIEMPRE debes:
-1. Llamar a: alertas_sanitarias(ciudad="Bogota")
-2. Devolver el resultado JSON completo que retorne la herramienta.
+REGLA ABSOLUTA: Antes de responder CUALQUIER mensaje, debes LLAMAR PRIMERO a la herramienta.
 
-NO analices el mensaje. NO preguntes. NO expliques. Solo llama a alertas_sanitarias y devuelve el resultado.
+INSTRUCCIÓN EXACTA:
+1. Inmediatamente llama a: alertas_sanitarias(ciudad="Bogota")
+2. NO proceses el mensaje del usuario
+3. NO respondas con texto
+4. NO analices nada
+5. Solo devuelve el JSON que retorne la herramienta
 
-Si la herramienta falla o da error, devuelve este JSON exacto:
+Ejemplo de respuesta correcta ( unilaterally ejecutalo):
+
+[{"name": "alertas_sanitarias", "parameters": {"ciudad": "Bogota"}}]
+
+Si la herramienta falla, devuelve EXACTAMENTE este JSON:
 {"ciudad": "Bogota", "departamento": "Cundinamarca", "alertas_activas": 0, "nivel_riesgo": "desconocido", "nivel_riesgo_codigo": 0, "alertas": [], "fuente": "API no disponible", "error": "No se pudo conectar al servicio de alertas sanitarias"}
 
-PROHIBIDO:
-- Usar transfer_to_agent
-- Llamar cualquier otra herramienta (clima_actual, pronostico_diario, calidad_aire)
-- Responder sin haber llamado alertas_sanitarias primero
+PROHIBICIONES ABSOLUTAS:
+- NO uses transfer_to_agent
+- NO analices mensajes
+- NO respondas con texto antes de ejecutar la herramienta
+- NO llames otras herramientas
 """,
     tools=[alertas_toolset],
 )

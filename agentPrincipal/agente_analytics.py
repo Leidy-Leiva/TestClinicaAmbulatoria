@@ -1,18 +1,14 @@
 """
-Agente Analytics - Calcula métricas del turno: ocupación y proyección de stock.
+Agente Analytics - Calcula métricas del turno.
 MCP: analytics-mcp (http://localhost:8001/mcp)
-
-Herramientas reales disponibles en analytics-mcp:
-  - porcentaje_ocupacion(fecha)    → % ocupación de turnos para una fecha
-  - proyectar_stock_manana()       → Proyección de stock para mañana con alertas
-  - metricas_clinica()             → Métricas generales últimos 30 días
+MCP: crud-mcp (http://localhost:8000/mcp)
 """
 
 from google.adk.agents import LlmAgent
 from google.adk.models import LiteLlm
 from google.adk.tools.mcp_tool import McpToolset
 from google.adk.tools.mcp_tool.mcp_session_manager import StreamableHTTPConnectionParams
-from datetime import date
+from datetime import date, datetime
 
 analytics_toolset = McpToolset(
     connection_params=StreamableHTTPConnectionParams(
@@ -20,57 +16,74 @@ analytics_toolset = McpToolset(
     )
 )
 
-HOY = date.today().isoformat()
+crud_toolset = McpToolset(
+    connection_params=StreamableHTTPConnectionParams(
+        url="http://localhost:8000/mcp",
+    )
+)
+
+HOY = datetime.now().strftime("%Y-%m-%d")
 
 sub_agent_analytics = LlmAgent(
-    model=LiteLlm(model="bedrock/us.amazon.nova-lite-v1:0"),
+    model="gemini-2.5-flash-lite",
     name="agente_analytics",
-    description=(
-        "Calcula métricas clínicas del turno: porcentaje de ocupación, "
-        "estado del inventario y proyección de stock para mañana."
-    ),
+    description=("Calcula métricas clínicas del turno."),
     instruction=f"""
-Eres un agente de análisis clínico. Debes calcular las métricas del turno del día {HOY}.
+Eres un agente que debe ejecutar herramientas para obtener datos reales.
 
-Ejecuta EXACTAMENTE estas herramientas en orden:
+El NOMBRE de la clínica viene en el mensaje del usuario.
+Ejemplo: "Genera el cierre del turno de hoy para la clinica Centro Medico Norte"
 
-1. porcentaje_ocupacion(fecha="{HOY}")
-   → Devuelve: turnos_totales, turnos_ocupados, turnos_atendidos, porcentaje_ocupacion
+EJECUTA EN ORDEN:
 
-2. proyectar_stock_manana()
-   → Devuelve: lista de medicamentos con stock_actual, stock_proyectado_manana, alertas de bajo stock
+1. list_clinicas(nombre=[NOMBRE_DE_LA_CLINICA_DEL_USUARIO], limit=1)
+   - El resultado tiene 'items' (array)
+   - Del primer item, extrae: id (clinica_id), cantidad_pacientes_maximo (capacidad), nombre
+   - GUARDA estos valores
 
-3. metricas_clinica()
-   → Devuelve: métricas de turnos, atenciones y medicamentos en los últimos 30 días
+2. list_medicamentos(limit=50)
+   - Cuenta críticos: stock_actual = 0
+   - Cuenta bajos: stock_actual <= stock_minimo (pero no críticos)
+   - Lista nombres de críticos y bajos
 
-Después de ejecutar las 3 herramientas, construye y devuelve un JSON con esta estructura:
+3. proyectar_stock_manana()
+   - Obtiene alertas para mañana: medicamento_nombre, stock_actual, stock_proyectado
+
+4. porcentaje_ocupacion(fecha="{HOY}", clinica_id=[EL_CLINICA_ID_OBTENIDO])
+   - Obtiene: pacientes_unicos, capacidad, porcentaje_ocupacion, nivel_ocupacion
+
+5. list_atenciones(fecha="{HOY}", clinica_id=[EL_CLINICA_ID_OBTENIDO], limit=100)
+   - Cuenta pacientes únicos atendidos
+
+IMPORTANTE: 
+- Busca la clínica PRIMERO para obtener su clinica_id
+- Usa ese clinica_id en porcentaje_ocupacion y list_atenciones
+
+LUEGO DEVUELVE JSON con datos reales:
 {{
   "fecha": "{HOY}",
+  "clinica_id": [EL_ID_OBTENIDO],
+  "clinica_nombre": "[NOMBRE_DE_LA_CLINICA]",
+  "capacidad_maxima": [CAPACIDAD_OBTENIDA],
   "ocupacion": {{
-    "total_turnos": <número de get porcentaje_ocupacion>,
-    "turnos_atendidos": <número>,
-    "porcentaje_ocupacion": <número porcentual>,
-    "nivel": "BAJO si <30%, NORMAL si 30-70%, ALTO si 70-90%, CRITICO si >90%"
+    "pacientes_unicos_turno": [NUMERO_REAL],
+    "porcentaje_ocupacion": [NUMERO_REAL],
+    "nivel": "[NIVEL_REAL]"
   }},
   "inventario": {{
-    "total_medicamentos": <número de metricas_clinica>,
-    "medicamentos_bajo_stock": <número>,
-    "estado_general": "NORMAL si 0 bajos, PRECAUCION si 1-3, CRITICO si >3"
+    "total_medicamentos": [NUMERO_REAL],
+    "medicamentos_criticos": [NUMERO_REAL],
+    "medicamentos_bajos": [NUMERO_REAL],
+    "lista_criticos": [ARRAY_DE_NOMBRES],
+    "lista_bajos": [ARRAY_DE_NOMBREs],
+    "estado": "[CRITICO/BAJO STOCK/OK]"
   }},
   "proyeccion_manana": {{
-    "alertas_criticas": [<nombres de medicamentos con estado sin_stock>],
-    "alertas_bajas": [<nombres de medicamentos con estado bajo_stock>],
-    "total_alertas": <número>
-  }},
-  "metricas_raw": <resultado completo de metricas_clinica>
+    "alertas": [ARRAY_DE_ALERTAS]
+  }}
 }}
 
-REGLAS ESTRICTAS:
-- NO uses transfer_to_agent bajo ninguna circunstancia.
-- NO uses herramientas que no existen como metricas_turno o estado_inventario.
-- NO inventes métricas. Usa ÚNICAMENTE los datos retornados por las herramientas.
-- Si una herramienta falla, usa 0 o [] como valor por defecto y registra el error.
-- Responde ÚNICAMENTE con el JSON resultado, sin texto adicional.
+Responde SOLO con JSON, sin texto adicional.
 """,
-    tools=[analytics_toolset],
+    tools=[crud_toolset, analytics_toolset],
 )
