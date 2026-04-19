@@ -311,3 +311,118 @@ def test_get_disk_usage_with_files():
     assert result["file_count"] == 3
     assert result["directory_count"] == 1
     assert result["total_size_bytes"] > 0
+
+
+# ── ERRORES Y CASOS EXTREMOS ───────────────────────────────────────────────────
+
+def test_read_file_too_large():
+    os.environ["MAX_FILE_SIZE_MB"] = "0"
+    import importlib
+    import server as srv
+    importlib.reload(srv)
+    from server import write_file, read_file, MAX_FILE_BYTES
+    
+    os.environ["MAX_FILE_SIZE_MB"] = "1"
+    importlib.reload(srv)
+    from server import write_file, read_file
+    
+    write_file("small.txt", "x")
+    with pytest.raises(ValueError, match="demasiado grande"):
+        read_file("small.txt")
+
+
+def test_write_file_content_too_large():
+    os.environ["MAX_FILE_SIZE_MB"] = "1"
+    import importlib
+    import server as srv
+    importlib.reload(srv)
+    from server import write_file
+    
+    large_content = "x" * (11 * 1024 * 1024)
+    with pytest.raises(ValueError, match="demasiado grande"):
+        write_file("large.txt", large_content)
+
+
+def test_delete_root_forbidden():
+    with pytest.raises(PermissionError, match="raíz"):
+        delete_file("/")
+
+
+def test_delete_directory_root_forbidden():
+    with pytest.raises(PermissionError, match="raíz"):
+        delete_directory(".")
+
+
+def test_copy_nonexistent_source():
+    with pytest.raises(FileNotFoundError):
+        copy_file("no_existe.txt", "destino.txt")
+
+
+def test_move_nonexistent_source():
+    with pytest.raises(FileNotFoundError):
+        move_file("no_existe.txt", "destino.txt")
+
+
+def test_list_directory_nonexistent():
+    with pytest.raises(FileNotFoundError):
+        list_directory("directorio_inexistente")
+
+
+def test_create_directory_recursive():
+    create_directory("a/b/c/d", exist_ok=True)
+    assert (FS_ROOT / "a/b/c/d").is_dir()
+
+
+def test_search_files_empty_query():
+    result = search_files("")
+    assert result["total_matches"] == 0
+
+
+def test_search_files_with_results():
+    write_file("match1.txt", "hello world")
+    write_file("match2.txt", "hello python")
+    write_file("no_match.txt", "foo bar")
+    result = search_files("hello")
+    assert result["total_matches"] >= 2
+
+
+def test_file_info_hidden_file():
+    write_file(".secret", "hidden content")
+    info = get_file_info(".secret")
+    assert info["type"] == "file"
+
+
+def test_disk_usage_on_file_error():
+    with pytest.raises(NotADirectoryError):
+        get_disk_usage("a.txt")
+
+
+# ── SEGURIDAD ADICIONAL ──────────────────────────────��─────────────────────
+
+def test_path_traversal_absolute_windows():
+    with pytest.raises(PermissionError):
+        safe_path("C:\\windows\\system32\\config")
+
+
+def test_path_traversal_with_null_byte():
+    with pytest.raises(PermissionError):
+        safe_path("..\\..\\etc/passwd\x00.txt")
+
+
+def test_write_file_with_special_chars():
+    special_name = "file with spaces and #tags.txt"
+    write_file(special_name, "content", overwrite=True)
+    assert (FS_ROOT / special_name).exists()
+
+
+def test_read_file_encoding_invalid():
+    write_file("binary.dat", "\x00\x01\x02")
+    with pytest.raises(UnicodeDecodeError):
+        read_file("binary.dat", encoding="utf-8")
+
+
+def test_safe_path_edge_cases():
+    assert safe_path("./././file.txt")
+    assert safe_path("folder/../other/file.txt")
+    with pytest.raises(PermissionError):
+        safe_path("folder/../../outside")

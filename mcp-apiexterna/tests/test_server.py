@@ -27,7 +27,10 @@ from server import (
     buscar_ciudad,
     historial_clima,
     calidad_aire,
+    clima_por_coordenadas,
 )
+
+import httpx
 
 
 # ── HELPERS ───────────────────────────────────────────────────────────────────
@@ -241,3 +244,119 @@ def test_historial_clima_enero_2024():
     assert result["resumen"]["temp_media_periodo_c"] is not None
     # Bogotá tiene temperatura templada (aprox 13-18°C)
     assert 5 <= result["resumen"]["temp_media_periodo_c"] <= 25
+
+
+# ── ERRORES: SERVICIOS CAÍDOS ─────────────────────────────────────────────────────────
+
+def test_clima_actual_timeout():
+    import httpx
+    with patch('server._get_client') as mock_client:
+        mock_client.return_value.get.side_effect = httpx.Timeout("Connection timeout")
+        with pytest.raises(httpx.Timeout, match="timeout"):
+            clima_actual("Bogotá")
+
+
+def test_clima_actual_http_error():
+    import httpx
+    with patch('server._get_client') as mock_client:
+        mock_client.return_value.get.side_effect = httpx.HTTPStatusError(
+            "Service unavailable",
+            request=MagicMock(),
+            response=MagicMock(status_code=503)
+        )
+        with pytest.raises(httpx.HTTPStatusError):
+            clima_actual("Bogotá")
+
+
+def test_pronostico_diario_network_error():
+    import httpx
+    with patch('server._get_client') as mock_client:
+        mock_client.return_value.get.side_effect = httpx.NetworkError("Network down")
+        with pytest.raises(httpx.NetworkError):
+            pronostico_diario("Medellín", dias=3)
+
+
+def test_pronostico_horario_connection_error():
+    import httpx
+    with patch('server._get_client') as mock_client:
+        mock_client.return_value.get.side_effect = httpx.ConnectError("Connection refused")
+        with pytest.raises(httpx.ConnectError):
+            pronostico_horario("Cali", horas=12)
+
+
+def test_calidad_aire_service_unavailable():
+    import httpx
+    with patch('server._get_client') as mock_client:
+        mock_client.return_value.get.side_effect = httpx.HTTPStatusError(
+            "Service unavailable",
+            request=MagicMock(),
+            response=MagicMock(status_code=500)
+        )
+        with pytest.raises(httpx.HTTPStatusError):
+            calidad_aire("Bogotá")
+
+
+def test_historial_clima_invalid_response():
+    with patch('server._get_client') as mock_client:
+        mock_resp = MagicMock()
+        mock_resp.status_code = 400
+        mock_resp.raise_for_status.side_effect = ValueError("Bad request")
+        mock_client.return_value.get.return_value = mock_resp
+        with pytest.raises(ValueError, match="Bad request"):
+            historial_clima("Bogotá", "2024-01-01", "2024-01-15")
+
+
+# ── ERRORES: VALIDACIÓN EXTREMA ────────────────────────────────────────────────
+
+def test_clima_actual_ciudad_vacia():
+    with pytest.raises(ValueError, match="no encontrada"):
+        clima_actual("")
+
+
+def test_clima_actual_ciudad_espacios():
+    with pytest.raises(ValueError, match="no encontrada"):
+        clima_actual("   ")
+
+
+def test_pronostico_diario_dias_negativo():
+    with pytest.raises(ValueError, match="entre 1 y 16"):
+        pronostico_diario("Bogotá", dias=-5)
+
+
+def test_pronostico_horario_horas_excedidas():
+    with pytest.raises(ValueError, match="entre 1 y 168"):
+        pronostico_horario("Bogotá", horas=500)
+
+
+def test_calidad_aire_ciudad_invalida():
+    with pytest.raises(ValueError, match="no encontrada"):
+        calidad_aire("CiudadNoExistenteEnElMundo")
+
+
+def test_coordenadas_fuera_colombia():
+    with pytest.raises(ValueError, match="fuera de Colombia"):
+        clima_por_coordenadas(50.0, -40.0)
+
+
+def test_coordenadas_latitud_invalida():
+    with pytest.raises(ValueError, match="Latitud"):
+        clima_por_coordenadas(100.0, -75.0)
+
+
+def test_historial_fechas_iguales():
+    with pytest.raises(ValueError, match="posterior"):
+        historial_clima("Bogotá", "2024-06-01", "2024-06-01")
+
+
+def test_comparar_ciudades_sin_lista():
+    with pytest.raises(ValueError, match="al menos una ciudad"):
+        comparar_ciudades([])
+
+
+def test_buscar_ciudad_respuesta_vacia():
+    with patch('server._get_client') as mock_client:
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {"results": []}
+        mock_client.return_value.get.return_value = mock_resp
+        result = buscar_ciudad("XYZNOEXISTE")
+        assert result["total_resultados"] == 0
