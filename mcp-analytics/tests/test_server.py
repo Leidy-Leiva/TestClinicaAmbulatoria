@@ -2,6 +2,7 @@ import pytest
 from unittest.mock import Mock, patch, MagicMock
 import sys
 import os
+import sqlite3
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
@@ -63,6 +64,108 @@ class TestStock:
         assert "fecha_proyeccion" in result
         assert "alertas" in result
         assert result["total_medicamentos"] == 0
+
+
+class TestErrores:
+    @patch('server.get_connection')
+    def test_db_connection_failed(self, mock_conn):
+        mock_conn.side_effect = sqlite3.OperationalError("Database locked")
+        
+        with pytest.raises(RuntimeError, match="No se puede abrir"):
+            porcentaje_ocupacion("2026-04-09")
+
+    @patch('server.get_connection')
+    def test_tendencia_ocupacion_dias_invalidos(self, mock_conn):
+        with pytest.raises(ValueError, match="entre 1 y 30"):
+            tendencia_ocupacion(dias=0)
+        
+        with pytest.raises(ValueError, match="entre 1 y 30"):
+            tendencia_ocupacion(dias=31)
+
+    @patch('server.get_connection')
+    def test_metricas_fecha_invalida(self, mock_conn):
+        with pytest.raises(ValueError, match="formato"):
+            metricas_clinica(fecha_inicio="invalid-date")
+
+    @patch('server.get_connection')
+    def test_proyeccion_db_error(self, mock_conn):
+        mock_conn.return_value.__enter__ = Mock(return_value=mock_conn.return_value)
+        mock_conn.return_value.__exit__ = Mock(return_value=False)
+        mock_conn.return_value.execute.side_effect = sqlite3.OperationalError("DB error")
+        
+        with pytest.raises(sqlite3.OperationalError):
+            proyectar_stock_manana()
+
+    def test_metricas_fechas_invertidas(self):
+        with patch('server.get_connection'):
+            with pytest.raises(ValueError, match="posterior"):
+                metricas_clinica(fecha_inicio="2024-12-01", fecha_fin="2024-01-01")
+
+    def test_porcentaje_ocupacion_fecha_futura(self):
+        with patch('server.get_connection') as mock_conn:
+            mock_conn.return_value.__enter__ = Mock(return_value=mock_conn.return_value)
+            mock_conn.return_value.__exit__ = Mock(return_value=False)
+            mock_conn.return_value.execute.return_value.fetchone.return_value = {"total": 0}
+            
+            result = porcentaje_ocupacion("2030-01-01")
+            assert result["porcentaje_ocupacion"] == 0
+
+
+class TestSeguridad:
+    def test_sql_injection_fecha(self):
+        with patch('server.get_connection') as mock_conn:
+            mock_conn.return_value.__enter__ = Mock(return_value=mock_conn.return_value)
+            mock_conn.return_value.__exit__ = Mock(return_value=False)
+            mock_conn.return_value.execute.return_value.fetchone.return_value = {"total": 0, "ocup": 0}
+            
+            result = tendencia_ocupacion(dias=7)
+            assert "tendencia" in result
+            assert result["dias_analizados"] == 7
+
+    def test_no_eval_injection(self):
+        with patch('server.get_connection') as mock_conn:
+            mock_conn.return_value.__enter__ = Mock(return_value=mock_conn.return_value)
+            mock_conn.return_value.__exit__ = Mock(return_value=False)
+            mock_conn.return_value.execute.return_value.fetchone.return_value = {"total": 0}
+            
+            result = tendencia_ocupacion(dias=1)
+            assert result is not None
+
+
+class TestHappyPath:
+    @patch('server.get_connection')
+    def test_ocupacion_por_clinica_con_datos(self, mock_conn):
+        mock_conn.return_value.__enter__ = Mock(return_value=mock_conn.return_value)
+        mock_conn.return_value.__exit__ = Mock(return_value=False)
+        
+        mock_clinicas = [
+            {"id": 1, "nombre": "Clinica Norte"},
+            {"id": 2, "nombre": "Clinica Sur"},
+        ]
+        mock_conn.return_value.execute.return_value.fetchall.side_effect = [
+            mock_clinicas,
+            {"total": 10},
+            {"ocup": 8},
+            {"total": 5},
+            {"ocup": 4},
+        ]
+        
+        result = ocupacion_por_clinica("2026-04-09")
+        assert result["total_clinicas"] == 2
+        assert len(result["ocupacion_por_clinica"]) == 2
+
+    @patch('server.get_connection')
+    def test_ranking_medicamentos_top(self, mock_conn):
+        mock_conn.return_value.__enter__ = Mock(return_value=mock_conn.return_value)
+        mock_conn.return_value.__exit__ = Mock(return_value=False)
+        mock_conn.return_value.execute.return_value.fetchall.return_value = [
+            {"id": 1, "nombre": "Acetaminophen", "consumo_total": 100},
+            {"id": 2, "nombre": "Ibuprofen", "consumo_total": 80},
+        ]
+        
+        result = ranking_medicamentos(limit=5)
+        assert result["total_resultados"] == 2
+        assert len(result["medicamentos"]) == 2
 
 
 if __name__ == "__main__":
