@@ -1,0 +1,87 @@
+services:
+  # Base de datos CRUD
+  crud-mcp:
+    build:
+      context: ./mcp-crud
+      dockerfile: Dockerfile
+      target: runtime
+    image: crud-mcp:latest
+    container_name: crud-mcp
+    volumes:
+      - ./mcp-crud/data:/data
+    environment:
+      DB_PATH: /data/crud.db
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+  # Analytics - comparte BD con CRUD
+  clinica-analytics-mcp:
+    build:
+      context: ./mcp-analytics
+      dockerfile: Dockerfile
+      target: runtime
+    image: clinica-analytics-mcp:latest
+    container_name: clinica-analytics-mcp
+    volumes:
+      - ./mcp-crud/data:/data
+    environment:
+      DB_PATH: /data/crud.db
+    ports:
+      - "8001:8001"
+    restart: unless-stopped
+    depends_on:
+      - crud-mcp
+
+  # API Externa - Clima Colombia
+  weather-colombia-mcp:
+    build:
+      context: ./mcp-apiexterna
+      dockerfile: Dockerfile
+      target: runtime
+    image: weather-colombia-mcp:latest
+    container_name: weather-colombia-mcp
+    ports:
+      - "8002:8002"
+    environment:
+      OWM_API_KEY: ""
+      HTTP_TIMEOUT: "10"
+    restart: unless-stopped
+
+  # Filesystem - Archivos
+  filesystem-mcp:
+    build:
+      context: ./mcp-filesystem
+      dockerfile: Dockerfile
+      target: runtime
+    image: filesystem-mcp:latest
+    container_name: filesystem-mcp
+    volumes:
+      - ./mcp-filesystem/workspace:/workspace
+    environment:
+      FS_ROOT: /workspace
+      MAX_FILE_SIZE_MB: "10"
+    ports:
+      - "8003:8003"
+    restart: unless-stopped
+
+  # Agente Orquestador (job on-demand)
+  agent-orquestador:
+    build:
+      context: ./agent
+      dockerfile: Dockerfile
+    image: agent-orquestador:latest
+    container_name: agent-orquestador
+    environment:
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+    volumes:
+      - ./mcp-filesystem/workspace:/app/workspace
+    working_dir: /app
+    entrypoint: ["python", "agent.py"]
+    restart: "no"
+    profiles:
+      - agent
+
+networks:
+  default:
+    name: clinica-network
